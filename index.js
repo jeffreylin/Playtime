@@ -35,7 +35,7 @@ function FileUpload( file ){
 	
 		// TO-DO: SANITIZE THIS INPUT
 	console.log('starting post request'); //remove later
-	xhr.open('POST', 'http://localhost:3000/?'+file.fileName);
+	xhr.open('POST', 'http://localhost:3000/upload?'+file.fileName);
 	xhr.overrideMimeType('text/plain; charset=x-user-definied-binary');
 	reader.onload = function(evt){
 		xhr.sendAsBinary(evt.target.result);
