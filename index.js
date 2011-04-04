@@ -1,44 +1,85 @@
-$(function(){
-	$('#dropTarget').bind('dragenter', {}, false);
-	$('#dropTarget').bind('dragover', {}, false);
-	$('#dropTarget').bind('drop', {}, function(e){
-		e.stopPropagation();
-		e.preventDefault();
-		var dt = e.originalEvent.dataTransfer;
-		var files = dt.files;
-		it = files;
-		for (var i=0; i<files.length; i++){
-			console.log('starting file upload');
-			new FileUpload( files[i] );
-		}
-	});
+Backbone.sync = function(method, model){
+	// helper functions
+	function syncCreateHandler(model){
+		now.getUUID( function(uuid){
+			model.id = uuid;
+			model.set({id: uuid});
+			syncUpdateHandler(model);
+		});
+	};
+
+	function syncReadHandler(model){
+		now.dbGet( model.id, function(){} );
+	};
+
+	function syncUpdateHandler(model){
+		var modelJSON = model.toJSON();
+		now.dbSet( modelJSON, function(){} );
+	};
+
+	function syncDeleteHandler(model){
+		now.dbRM( model.id, function(){} );
+	};
+
+	// parse and execute request
+	var methodMap = {
+		create: syncCreateHandler,
+		read: syncReadHandler,
+		update: syncUpdateHandler,
+		delete: syncDeleteHandler
+	};
+	methodMap[method](model);
+};
+
+var Renderable = Backbone.Model.extend({
+	
 });
 
-function FileUpload( file ){
-	var reader = new FileReader();
-	var xhr = new XMLHttpRequest();
-	this.xhr = xhr;
-	
-	/* start progress update code */
-	var self = this;
-	this.xhr.upload.addEventListener('progress', function(e){
-		if( e.lengthComputable ){
-			var percentage = Math.round((e.loaded*100)/e.total);
-			console.log(''+percentage+'% uploaded');
+var SuperView = Backbone.View.extend({	// a view that contains views
+	//subViews: [view1, view2...]
+	render: function(){
+		_(this.subViews).each(function(aSubview){
+			//(foreach) render subview
+			aSubview.render();
+			//(foreach) append subview
+			$(this.el).append(aSubview.el);
+		});
+		return this;	//for possible call chaining
+	}
+});
+
+var ArticleCollection = Backbone.Collection.extend({
+	model: Renderable,
+	initialize: function(){
+		var theCollection = this;
+		
+		//populate data
+		// get array of article UUIDs
+		now.dbGet('articles', haveArticleUUIDsPromise);	
+		
+		function haveArticleUUIDsPromise(articleUUIDs){
+			// add each article to the collection
+			//for (var idx in articleUUIDs){
+			//	theCollection.add({id: articleUUIDs[idx]});
+			//}
+			_(articleUUIDs).each( function(ele){theCollection.add({id: ele})} );	// might need to bind this to something else
+			
+			// update data in each Renderable in the collection
+			theCollection.each( function(theModel){ theModel.fetch(); });
+			//^ hmm... this is async... might not be the best idea...
+			
+			// show view
+			theCollection.view = new SuperView({el: $('body')[0], collection: theCollection});	//unhardcode this later!
 		}
-	}, false);
+	}
+});
 	
-	xhr.upload.addEventListener('load', function(e){
-		console.log('100% uploaded');
-	}, false);
-	/* end progres update code */
-	
-		// TO-DO: SANITIZE THIS INPUT
-	console.log('starting post request'); //remove later
-	xhr.open('POST', 'http://localhost:3000/upload?'+file.fileName);
-	xhr.overrideMimeType('text/plain; charset=x-user-definied-binary');
-	reader.onload = function(evt){
-		xhr.sendAsBinary(evt.target.result);
-	};
-	reader.readAsBinaryString(file);
-}
+var MdConverter = new Showdown.converter();
+var MarkdownView = Backbone.View.extend({
+	tagName: 'article',
+	render: function(){
+		var markdownOutput = MdConverter.makeHtml( this.model.get('markdown') );
+		$(this.el).html( markdownOutput );
+		return this;	// for possible call chaining
+	}
+});
